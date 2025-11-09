@@ -17,6 +17,7 @@ import Voting from "./pages/Voting";
 import GenerateReports from "./pages/GenerateReports";
 import CreateVoting from "./pages/CreateVoting";
 import SelectAssemblyForVoting from "./pages/SelectAssemblyForVoting";
+import AssemblyAccess from "./pages/AssemblyAccess";
 
  function App() {
   return (
@@ -39,6 +40,7 @@ import SelectAssemblyForVoting from "./pages/SelectAssemblyForVoting";
       <Route path="/create-voting" element={<SelectAssemblyForVoting />} />
       <Route path="/create-voting/:assemblyId" element={<CreateVoting />} />
       <Route path="/generate-reports" element={<GenerateReports />} />
+      <Route path="/assembly-access" element={<AssemblyAccess />} />
     </Routes>
   );
 }

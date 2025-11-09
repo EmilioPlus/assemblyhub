@@ -31,8 +31,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
     if (storedToken && storedUser) {
       try {
+        const parsedUser = JSON.parse(storedUser);
+        // Normalizar el usuario: asegurar que tenga _id (convertir id a _id si es necesario)
+        const normalizedUser = parsedUser ? {
+          ...parsedUser,
+          _id: parsedUser._id || parsedUser.id,
+        } : null;
+        
         setToken(storedToken);
-        setUser(JSON.parse(storedUser));
+        setUser(normalizedUser);
       } catch (error) {
         console.error('Error parsing stored user:', error);
         localStorage.removeItem(`token_${sessionIdRef.current}`);
@@ -59,12 +66,20 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
       const data = await response.json();
       
+      // Normalizar el usuario: asegurar que tenga _id (convertir id a _id si es necesario)
+      const normalizedUser = data.user ? {
+        ...data.user,
+        _id: data.user._id || data.user.id,
+      } : null;
+      
       setToken(data.token);
-      setUser(data.user);
+      setUser(normalizedUser);
       
       // Guardar en localStorage con el sessionId específico de esta tab
       localStorage.setItem(`token_${sessionIdRef.current}`, data.token);
-      localStorage.setItem(`user_${sessionIdRef.current}`, JSON.stringify(data.user));
+      if (normalizedUser) {
+        localStorage.setItem(`user_${sessionIdRef.current}`, JSON.stringify(normalizedUser));
+      }
     } catch (error) {
       throw error;
     }

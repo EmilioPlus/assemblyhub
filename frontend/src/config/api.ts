@@ -43,6 +43,20 @@ export const API_CONFIG = {
     REPORTS: {
       EXPORT: `${API_BASE_URL}/api/reportes/exportar`,
     },
+    ASSEMBLY_DOCUMENTS: {
+      UPLOAD: `${API_BASE_URL}/api/assembly-documents/upload`,
+      LIST: (assemblyId: string) => `${API_BASE_URL}/api/assembly-documents/${assemblyId}`,
+      DOWNLOAD: (documentId: string) => `${API_BASE_URL}/api/assembly-documents/download/${documentId}`,
+      DELETE: (documentId: string) => `${API_BASE_URL}/api/assembly-documents/${documentId}`,
+      VALIDATE: `${API_BASE_URL}/api/assembly-documents/validate`,
+      HISTORY: (documentId: string) => `${API_BASE_URL}/api/assembly-documents/history/${documentId}`,
+      PENDING_LIST: `${API_BASE_URL}/api/assembly-documents/pending/list`,
+    },
+    ASSEMBLY_ACCESS: {
+      VERIFY_ACCESS_CODE: `${API_BASE_URL}/api/asambleas/acceso`,
+      VERIFY_DOCUMENT: `${API_BASE_URL}/api/asambleas/verificar`,
+      VERIFY_CODE: `${API_BASE_URL}/api/asambleas/codigo-verificacion`,
+    },
   },
 };
 

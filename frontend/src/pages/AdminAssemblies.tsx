@@ -26,6 +26,7 @@ import {
   InputLabel,
   Alert,
   Chip,
+  CircularProgress,
 } from "@mui/material";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import EditIcon from "@mui/icons-material/Edit";
@@ -40,9 +41,13 @@ import PersonIcon from "@mui/icons-material/Person";
 import HistoryIcon from "@mui/icons-material/History";
 import CloseIcon from "@mui/icons-material/Close";
 import HowToVoteIcon from "@mui/icons-material/HowToVote";
+import DescriptionIcon from "@mui/icons-material/Description";
+import UploadFileIcon from "@mui/icons-material/UploadFile";
+import DownloadIcon from "@mui/icons-material/Download";
 import { useAuth } from "../contexts/AuthContext";
 import axios from "axios";
 import { StyledLoginButton } from "../Styles/Login.styles";
+import { API_CONFIG } from "../config/api";
 
 interface Assembly {
   _id: string;
@@ -97,6 +102,17 @@ export default function AdminAssemblies() {
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [selectedAssembly, setSelectedAssembly] = useState<AssemblyDetail | null>(null);
+  const [documentsModalOpen, setDocumentsModalOpen] = useState(false);
+  const [documents, setDocuments] = useState<any[]>([]);
+  const [uploadDocumentOpen, setUploadDocumentOpen] = useState(false);
+  const [documentForm, setDocumentForm] = useState({ name: "", file: null as File | null });
+  const [validateModalOpen, setValidateModalOpen] = useState(false);
+  const [previewModalOpen, setPreviewModalOpen] = useState(false);
+  const [selectedDocument, setSelectedDocument] = useState<any>(null);
+  const [validateForm, setValidateForm] = useState({ status: "approved" as "approved" | "rejected", observations: "" });
+  const [validationHistory, setValidationHistory] = useState<any[]>([]);
+  const [historyModalOpen, setHistoryModalOpen] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   // Formulario de edición
   const [editForm, setEditForm] = useState({
@@ -286,6 +302,185 @@ export default function AdminAssemblies() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (err: any) {
       setError(err.response?.data?.msg || "Error al eliminar la asamblea");
+    }
+  };
+
+  const handleDocumentsClick = async (assemblyId: string) => {
+    try {
+      const response = await axios.get(API_CONFIG.ENDPOINTS.ASSEMBLY_DOCUMENTS.LIST(assemblyId), {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setDocuments(response.data.documents || []);
+      setSelectedAssembly({ _id: assemblyId } as AssemblyDetail);
+      setDocumentsModalOpen(true);
+    } catch (err: any) {
+      setError(err.response?.data?.msg || "Error al cargar los documentos");
+    }
+  };
+
+  const handleUploadDocument = async () => {
+    if (!documentForm.name || !documentForm.file) {
+      setError("El nombre y el archivo son obligatorios");
+      return;
+    }
+
+    // Validar formato
+    const allowedTypes = ["application/pdf", "image/jpeg", "image/jpg", "image/png"];
+    if (!allowedTypes.includes(documentForm.file.type)) {
+      setError("El formato del archivo no es válido. Solo se permiten PDF, JPG o PNG.");
+      return;
+    }
+
+    // Validar tamaño (10MB)
+    if (documentForm.file.size > 10 * 1024 * 1024) {
+      setError("El archivo supera el tamaño máximo permitido (10MB).");
+      return;
+    }
+
+    try {
+      setError("");
+      setSuccess("");
+      const formData = new FormData();
+      formData.append("document", documentForm.file);
+      formData.append("assemblyId", selectedAssembly?._id || "");
+      formData.append("name", documentForm.name);
+
+      await axios.post(API_CONFIG.ENDPOINTS.ASSEMBLY_DOCUMENTS.UPLOAD, formData, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "multipart/form-data",
+        },
+      });
+
+      setSuccess("Documento cargado exitosamente");
+      setUploadDocumentOpen(false);
+      setDocumentForm({ name: "", file: null });
+      // Recargar documentos
+      if (selectedAssembly?._id) {
+        await handleDocumentsClick(selectedAssembly._id);
+      }
+    } catch (err: any) {
+      setError(err.response?.data?.msg || "Error al cargar el documento");
+    }
+  };
+
+  const handleDeleteDocument = async (documentId: string) => {
+    if (!window.confirm("¿Está seguro de eliminar este documento?")) {
+      return;
+    }
+
+    try {
+      setError("");
+      setSuccess("");
+      await axios.delete(API_CONFIG.ENDPOINTS.ASSEMBLY_DOCUMENTS.DELETE(documentId), {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      setSuccess("Documento eliminado exitosamente");
+      // Recargar documentos
+      if (selectedAssembly?._id) {
+        await handleDocumentsClick(selectedAssembly._id);
+      }
+    } catch (err: any) {
+      setError(err.response?.data?.msg || "Error al eliminar el documento");
+    }
+  };
+
+  const handleDownloadDocument = async (documentId: string, fileName: string) => {
+    try {
+      const url = API_CONFIG.ENDPOINTS.ASSEMBLY_DOCUMENTS.DOWNLOAD(documentId);
+      const response = await axios.get(url, {
+        headers: { Authorization: `Bearer ${token}` },
+        responseType: "blob",
+      });
+      
+      // Crear URL del blob y descargar
+      const blob = new Blob([response.data]);
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = downloadUrl;
+      link.setAttribute("download", fileName);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(downloadUrl);
+    } catch (err: any) {
+      setError(err.response?.data?.msg || "Error al descargar el documento");
+    }
+  };
+
+  const handlePreviewDocument = async (doc: any) => {
+    try {
+      setSelectedDocument(doc);
+      // Obtener el documento como blob y crear URL local
+      const url = API_CONFIG.ENDPOINTS.ASSEMBLY_DOCUMENTS.DOWNLOAD(doc._id);
+      const response = await axios.get(url, {
+        headers: { Authorization: `Bearer ${token}` },
+        responseType: "blob",
+      });
+      
+      const blob = new Blob([response.data], { type: doc.mimeType });
+      const localUrl = window.URL.createObjectURL(blob);
+      setPreviewUrl(localUrl);
+      setPreviewModalOpen(true);
+    } catch (err: any) {
+      setError(err.response?.data?.msg || "Error al cargar la vista previa");
+    }
+  };
+
+  const handleValidateClick = (doc: any) => {
+    setSelectedDocument(doc);
+    setValidateForm({ status: "approved", observations: "" });
+    setValidateModalOpen(true);
+  };
+
+  const handleValidateSubmit = async () => {
+    // Validar que si es rechazo, haya observaciones
+    if (validateForm.status === "rejected" && !validateForm.observations.trim()) {
+      setError("Debe incluir observaciones para rechazar un documento");
+      return;
+    }
+
+    try {
+      setError("");
+      setSuccess("");
+      await axios.post(
+        API_CONFIG.ENDPOINTS.ASSEMBLY_DOCUMENTS.VALIDATE,
+        {
+          documentId: selectedDocument?._id,
+          status: validateForm.status,
+          observations: validateForm.observations,
+        },
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+
+      setSuccess(
+        validateForm.status === "approved"
+          ? "Documento aprobado exitosamente."
+          : "Documento rechazado. Se ha notificado al usuario."
+      );
+      setValidateModalOpen(false);
+      setValidateForm({ status: "approved", observations: "" });
+      // Recargar documentos
+      if (selectedAssembly?._id) {
+        await handleDocumentsClick(selectedAssembly._id);
+      }
+    } catch (err: any) {
+      setError(err.response?.data?.msg || "Error al validar el documento");
+    }
+  };
+
+  const handleViewHistory = async (documentId: string) => {
+    try {
+      const response = await axios.get(API_CONFIG.ENDPOINTS.ASSEMBLY_DOCUMENTS.HISTORY(documentId), {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setValidationHistory(response.data.history || []);
+      setHistoryModalOpen(true);
+    } catch (err: any) {
+      setError(err.response?.data?.msg || "Error al cargar el historial");
     }
   };
 
@@ -643,6 +838,14 @@ export default function AdminAssemblies() {
                           onClick={() => navigate(`/create-voting/${assembly._id}`)}
                         >
                           <HowToVoteIcon fontSize="small" />
+                        </IconButton>
+                        <IconButton
+                          size="small"
+                          title="Gestionar Documentos"
+                          sx={{ color: "#9C27B0" }}
+                          onClick={() => handleDocumentsClick(assembly._id)}
+                        >
+                          <DescriptionIcon fontSize="small" />
                         </IconButton>
                       </Box>
                     </TableCell>
@@ -1044,6 +1247,502 @@ export default function AdminAssemblies() {
             Eliminar
           </Button>
         </DialogActions>
+      </Dialog>
+
+      {/* Modal Gestionar Documentos */}
+      <Dialog
+        open={documentsModalOpen}
+        onClose={() => setDocumentsModalOpen(false)}
+        maxWidth="md"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: 2 } }}
+      >
+        <DialogTitle sx={{ fontWeight: 600, color: "#212529", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <span>Gestionar Documentos</span>
+          <IconButton onClick={() => setDocumentsModalOpen(false)} size="small">
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent>
+          <Box sx={{ mb: 2, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <Typography variant="body2" color="textSecondary">
+              Solo los documentos aprobados son visibles para los participantes
+            </Typography>
+            <Button
+              variant="contained"
+              startIcon={<UploadFileIcon />}
+              onClick={() => setUploadDocumentOpen(true)}
+              sx={{
+                backgroundColor: "#1976d2",
+                textTransform: "none",
+                "&:hover": { backgroundColor: "#1565c0" },
+              }}
+            >
+              Cargar Documento
+            </Button>
+          </Box>
+          {documents.length === 0 ? (
+            <Typography variant="body2" color="textSecondary" sx={{ textAlign: "center", py: 4 }}>
+              No hay documentos cargados para esta asamblea
+            </Typography>
+          ) : (
+            <TableContainer>
+              <Table>
+                <TableHead>
+                  <TableRow sx={{ backgroundColor: "#eaf6ff" }}>
+                    <TableCell sx={{ fontWeight: 600 }}>Nombre</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>Archivo</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>Tamaño</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>Subido por</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>Fecha</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>Estado</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>Acciones</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {documents.map((doc) => (
+                    <TableRow key={doc._id}>
+                      <TableCell>{doc.name}</TableCell>
+                      <TableCell>{doc.originalFileName}</TableCell>
+                      <TableCell>{(doc.fileSize / 1024 / 1024).toFixed(2)} MB</TableCell>
+                      <TableCell>
+                        {doc.uploadedBy?.firstName} {doc.uploadedBy?.lastName}
+                      </TableCell>
+                      <TableCell>{formatDate(doc.uploadedAt)}</TableCell>
+                      <TableCell>
+                        <Chip
+                          label={
+                            doc.status === "pending"
+                              ? "Pendiente"
+                              : doc.status === "approved"
+                              ? "Aprobado"
+                              : "Rechazado"
+                          }
+                          color={
+                            doc.status === "pending"
+                              ? "warning"
+                              : doc.status === "approved"
+                              ? "success"
+                              : "error"
+                          }
+                          size="small"
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Box sx={{ display: "flex", gap: 0.5 }}>
+                          <IconButton
+                            size="small"
+                            onClick={() => handlePreviewDocument(doc)}
+                            title="Vista previa"
+                            sx={{ color: "#1976d2" }}
+                          >
+                            <VisibilityIcon fontSize="small" />
+                          </IconButton>
+                          <IconButton
+                            size="small"
+                            onClick={() => handleDownloadDocument(doc._id, doc.originalFileName)}
+                            title="Descargar"
+                            sx={{ color: "#1976d2" }}
+                          >
+                            <DownloadIcon fontSize="small" />
+                          </IconButton>
+                          {doc.status === "pending" && (
+                            <IconButton
+                              size="small"
+                              onClick={() => handleValidateClick(doc)}
+                              title="Validar"
+                              sx={{ color: "#ff9800" }}
+                            >
+                              <CheckCircleIcon fontSize="small" />
+                            </IconButton>
+                          )}
+                          <IconButton
+                            size="small"
+                            onClick={() => handleViewHistory(doc._id)}
+                            title="Ver historial"
+                            sx={{ color: "#9c27b0" }}
+                          >
+                            <HistoryIcon fontSize="small" />
+                          </IconButton>
+                          <IconButton
+                            size="small"
+                            onClick={() => handleDeleteDocument(doc._id)}
+                            title="Eliminar"
+                            sx={{ color: "#f44336" }}
+                          >
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
+                        </Box>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Modal Cargar Documento */}
+      <Dialog
+        open={uploadDocumentOpen}
+        onClose={() => {
+          setUploadDocumentOpen(false);
+          setDocumentForm({ name: "", file: null });
+        }}
+        PaperProps={{ sx: { borderRadius: 2 } }}
+      >
+        <DialogTitle sx={{ fontWeight: 600, color: "#212529" }}>
+          Cargar Documento
+        </DialogTitle>
+        <DialogContent>
+          <Box sx={{ display: "flex", flexDirection: "column", gap: 2, mt: 1 }}>
+            <TextField
+              fullWidth
+              label="Nombre del documento *"
+              value={documentForm.name}
+              onChange={(e) => setDocumentForm({ ...documentForm, name: e.target.value })}
+              variant="outlined"
+              required
+            />
+            <Button
+              variant="outlined"
+              component="label"
+              startIcon={<UploadFileIcon />}
+              sx={{ textTransform: "none" }}
+            >
+              Seleccionar archivo (PDF, JPG, PNG - Máx. 10MB)
+              <input
+                type="file"
+                hidden
+                accept=".pdf,.jpg,.jpeg,.png"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    setDocumentForm({ ...documentForm, file });
+                  }
+                }}
+              />
+            </Button>
+            {documentForm.file && (
+              <Typography variant="body2" color="textSecondary">
+                Archivo seleccionado: {documentForm.file.name} ({(documentForm.file.size / 1024 / 1024).toFixed(2)} MB)
+              </Typography>
+            )}
+          </Box>
+        </DialogContent>
+        <DialogActions sx={{ p: 2, gap: 1 }}>
+          <Button
+            onClick={() => {
+              setUploadDocumentOpen(false);
+              setDocumentForm({ name: "", file: null });
+            }}
+            variant="outlined"
+            sx={{ textTransform: "none" }}
+          >
+            Cancelar
+          </Button>
+          <Button
+            onClick={handleUploadDocument}
+            variant="contained"
+            sx={{
+              backgroundColor: "#1976d2",
+              textTransform: "none",
+              "&:hover": { backgroundColor: "#1565c0" },
+            }}
+            disabled={!documentForm.name || !documentForm.file}
+          >
+            Cargar
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Modal Validar Documento */}
+      <Dialog
+        open={validateModalOpen}
+        onClose={() => {
+          setValidateModalOpen(false);
+          setValidateForm({ status: "approved", observations: "" });
+        }}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: 2 } }}
+      >
+        <DialogTitle sx={{ fontWeight: 600, color: "#212529" }}>
+          Validar Documento
+        </DialogTitle>
+        <DialogContent>
+          <Box sx={{ display: "flex", flexDirection: "column", gap: 2, mt: 1 }}>
+            <Typography variant="body1" sx={{ fontWeight: 500 }}>
+              Documento: {selectedDocument?.name}
+            </Typography>
+            <FormControl fullWidth>
+              <InputLabel>Estado</InputLabel>
+              <Select
+                value={validateForm.status}
+                label="Estado"
+                onChange={(e) =>
+                  setValidateForm({
+                    ...validateForm,
+                    status: e.target.value as "approved" | "rejected",
+                  })
+                }
+              >
+                <MenuItem value="approved">Aprobar</MenuItem>
+                <MenuItem value="rejected">Rechazar</MenuItem>
+              </Select>
+            </FormControl>
+            <TextField
+              fullWidth
+              label={validateForm.status === "rejected" ? "Observaciones *" : "Observaciones (opcional)"}
+              value={validateForm.observations}
+              onChange={(e) =>
+                setValidateForm({ ...validateForm, observations: e.target.value })
+              }
+              multiline
+              rows={4}
+              variant="outlined"
+              required={validateForm.status === "rejected"}
+              helperText={
+                validateForm.status === "rejected"
+                  ? "Las observaciones son obligatorias para rechazar un documento"
+                  : "Puede agregar observaciones adicionales"
+              }
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions sx={{ p: 2, gap: 1 }}>
+          <Button
+            onClick={() => {
+              setValidateModalOpen(false);
+              setValidateForm({ status: "approved", observations: "" });
+            }}
+            variant="outlined"
+            sx={{ textTransform: "none" }}
+          >
+            Cancelar
+          </Button>
+          <Button
+            onClick={handleValidateSubmit}
+            variant="contained"
+            sx={{
+              backgroundColor:
+                validateForm.status === "approved" ? "#4caf50" : "#f44336",
+              textTransform: "none",
+              "&:hover": {
+                backgroundColor:
+                  validateForm.status === "approved" ? "#45a049" : "#d32f2f",
+              },
+            }}
+            disabled={
+              validateForm.status === "rejected" &&
+              !validateForm.observations.trim()
+            }
+          >
+            {validateForm.status === "approved" ? "Aprobar" : "Rechazar"}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Modal Vista Previa Documento */}
+      <Dialog
+        open={previewModalOpen}
+        onClose={() => {
+          if (previewUrl) {
+            window.URL.revokeObjectURL(previewUrl);
+          }
+          setPreviewModalOpen(false);
+          setSelectedDocument(null);
+          setPreviewUrl(null);
+        }}
+        maxWidth="lg"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: 2 } }}
+      >
+        <DialogTitle
+          sx={{
+            fontWeight: 600,
+            color: "#212529",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+          }}
+        >
+          <span>Vista Previa: {selectedDocument?.name}</span>
+          <IconButton
+            onClick={() => {
+              if (previewUrl) {
+                window.URL.revokeObjectURL(previewUrl);
+              }
+              setPreviewModalOpen(false);
+              setSelectedDocument(null);
+              setPreviewUrl(null);
+            }}
+            size="small"
+          >
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent>
+          {selectedDocument && previewUrl ? (
+            <Box sx={{ mt: 2 }}>
+              {selectedDocument.mimeType === "application/pdf" ? (
+                <iframe
+                  src={previewUrl}
+                  width="100%"
+                  height="600px"
+                  style={{ border: "none" }}
+                  title={selectedDocument.name}
+                />
+              ) : selectedDocument.mimeType?.startsWith("image/") ? (
+                <Box sx={{ textAlign: "center" }}>
+                  <img
+                    src={previewUrl}
+                    alt={selectedDocument.name}
+                    style={{ maxWidth: "100%", height: "auto", maxHeight: "600px" }}
+                  />
+                </Box>
+              ) : (
+                <Typography variant="body2" color="textSecondary">
+                  Vista previa no disponible para este tipo de archivo
+                </Typography>
+              )}
+            </Box>
+          ) : (
+            <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "400px" }}>
+              <CircularProgress />
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ p: 2, gap: 1 }}>
+          <Button
+            onClick={() => {
+              if (previewUrl) {
+                window.URL.revokeObjectURL(previewUrl);
+              }
+              setPreviewModalOpen(false);
+              setSelectedDocument(null);
+              setPreviewUrl(null);
+            }}
+            variant="outlined"
+            sx={{ textTransform: "none" }}
+          >
+            Cerrar
+          </Button>
+          {selectedDocument && (
+            <Button
+              onClick={() =>
+                handleDownloadDocument(
+                  selectedDocument._id,
+                  selectedDocument.originalFileName
+                )
+              }
+              variant="contained"
+              startIcon={<DownloadIcon />}
+              sx={{
+                backgroundColor: "#1976d2",
+                textTransform: "none",
+                "&:hover": { backgroundColor: "#1565c0" },
+              }}
+            >
+              Descargar
+            </Button>
+          )}
+        </DialogActions>
+      </Dialog>
+
+      {/* Modal Historial de Validación */}
+      <Dialog
+        open={historyModalOpen}
+        onClose={() => setHistoryModalOpen(false)}
+        maxWidth="md"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: 2 } }}
+      >
+        <DialogTitle
+          sx={{
+            fontWeight: 600,
+            color: "#212529",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+          }}
+        >
+          <span>Historial de Validación</span>
+          <IconButton onClick={() => setHistoryModalOpen(false)} size="small">
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent>
+          {validationHistory.length === 0 ? (
+            <Typography variant="body2" color="textSecondary" sx={{ textAlign: "center", py: 4 }}>
+              No hay historial de validación para este documento
+            </Typography>
+          ) : (
+            <TableContainer>
+              <Table>
+                <TableHead>
+                  <TableRow sx={{ backgroundColor: "#eaf6ff" }}>
+                    <TableCell sx={{ fontWeight: 600 }}>Acción</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>Usuario</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>Estado Anterior</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>Estado Nuevo</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>Observaciones</TableCell>
+                    <TableCell sx={{ fontWeight: 600 }}>Fecha</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {validationHistory.map((h: any) => (
+                    <TableRow key={h._id}>
+                      <TableCell>
+                        <Chip
+                          label={
+                            h.action === "upload"
+                              ? "Carga"
+                              : h.action === "approve"
+                              ? "Aprobación"
+                              : "Rechazo"
+                          }
+                          color={
+                            h.action === "upload"
+                              ? "default"
+                              : h.action === "approve"
+                              ? "success"
+                              : "error"
+                          }
+                          size="small"
+                        />
+                      </TableCell>
+                      <TableCell>
+                        {h.userId?.firstName} {h.userId?.lastName}
+                      </TableCell>
+                      <TableCell>
+                        {h.previousStatus
+                          ? h.previousStatus === "pending"
+                            ? "Pendiente"
+                            : h.previousStatus === "approved"
+                            ? "Aprobado"
+                            : "Rechazado"
+                          : "-"}
+                      </TableCell>
+                      <TableCell>
+                        {h.newStatus
+                          ? h.newStatus === "pending"
+                            ? "Pendiente"
+                            : h.newStatus === "approved"
+                            ? "Aprobado"
+                            : "Rechazado"
+                          : "-"}
+                      </TableCell>
+                      <TableCell>{h.observations || "-"}</TableCell>
+                      <TableCell>{formatDate(h.createdAt)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )}
+        </DialogContent>
       </Dialog>
     </Box>
   );

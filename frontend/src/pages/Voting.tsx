@@ -59,7 +59,12 @@ export default function Voting() {
   const [completed, setCompleted] = useState(false);
 
   useEffect(() => {
-    if (!token || !user || user.role !== "participant") {
+    if (!token || !user) {
+      navigate("/dashboard");
+      return;
+    }
+    // Permitir acceso a participantes y administradores (para visualización)
+    if (user.role !== "participant" && user.role !== "admin") {
       navigate("/dashboard");
       return;
     }
@@ -137,7 +142,15 @@ export default function Voting() {
           "Tiene un delegado registrado. Solo el delegado puede emitir votos."
         );
       } else {
-        setError(err.response?.data?.msg || "Error al cargar las preguntas");
+        const errorMsg = err.response?.data?.msg || "Error al cargar las preguntas";
+        setError(errorMsg);
+        
+        // Si la asamblea no ha iniciado o ya finalizó, redirigir después de mostrar el mensaje
+        if (errorMsg.includes("iniciará el") || errorMsg.includes("ha finalizado")) {
+          setTimeout(() => {
+            navigate("/participant-area");
+          }, 3000);
+        }
       }
     } finally {
       setLoading(false);
