@@ -7,6 +7,7 @@ export interface IAssembly extends Document {
   endDateTime: Date;
   processType: "assembly" | "voting";
   status: "scheduled" | "active" | "completed" | "cancelled";
+  accessCode?: string; // Código de acceso único para la asamblea
   createdBy: mongoose.Types.ObjectId;
   participants: mongoose.Types.ObjectId[];
   createdAt: Date;
@@ -47,6 +48,13 @@ const AssemblySchema = new Schema<IAssembly>(
       type: String,
       enum: ["scheduled", "active", "completed", "cancelled"],
       default: "scheduled",
+    },
+    accessCode: {
+      type: String,
+      required: false,
+      unique: true,
+      sparse: true, // Permite múltiples documentos sin accessCode
+      trim: true,
     },
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,

@@ -1,4 +1,4 @@
-// Script para matar procesos en un puerto específico (Windows)
+
 const { exec } = require('child_process');
 const port = process.argv[2] || '5000';
 

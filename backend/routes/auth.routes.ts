@@ -31,7 +31,7 @@ router.post("/register", async (req, res) => {
     
     res.status(201).json({ 
       msg: "Usuario creado exitosamente",
-      user: { id: user._id, email: user.email, firstName: user.firstName, lastName: user.lastName, role: user.role }
+      user: { _id: user._id, id: user._id, email: user.email, firstName: user.firstName, lastName: user.lastName, role: user.role, documentType: user.documentType, documentNumber: user.documentNumber, createdAt: user.createdAt }
     });
   } catch (error: any) {
     console.error("Error en registro:", error);
@@ -160,11 +160,15 @@ router.post("/login", async (req, res) => {
     res.json({ 
       token, 
       user: { 
-        id: user._id, 
+        _id: user._id,
+        id: user._id, // Mantener compatibilidad
         email: user.email, 
         firstName: user.firstName,
         lastName: user.lastName,
-        role: user.role 
+        role: user.role,
+        documentType: user.documentType,
+        documentNumber: user.documentNumber,
+        createdAt: user.createdAt
       } 
     });
   } catch (error: any) {

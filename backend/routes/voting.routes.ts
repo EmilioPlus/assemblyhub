@@ -362,6 +362,25 @@ router.get("/preguntas/:assemblyId", authMiddleware, async (req: any, res: Respo
       return res.status(404).json({ msg: "Asamblea no encontrada" });
     }
 
+    // Validar que la asamblea esté activa o al menos dentro de su rango de fechas
+    const now = new Date();
+    const startDate = new Date(assembly.startDateTime);
+    const endDate = new Date(assembly.endDateTime);
+
+    // Si la asamblea aún no ha iniciado, no se pueden ver las preguntas
+    if (now < startDate) {
+      return res.status(400).json({
+        msg: `La asamblea iniciará el ${startDate.toLocaleDateString("es-ES")} a las ${startDate.toLocaleTimeString("es-ES", { hour: "2-digit", minute: "2-digit" })}. Por favor espere.`,
+      });
+    }
+
+    // Si la asamblea ya finalizó, no se pueden ver las preguntas (solo resultados)
+    if (now > endDate) {
+      return res.status(400).json({
+        msg: "Esta asamblea ha finalizado.",
+      });
+    }
+
     // Verificar si tiene delegado (si es participante original)
     const delegate = await Delegate.findOne({
       participant: userId,
@@ -413,8 +432,7 @@ router.get("/preguntas/:assemblyId", authMiddleware, async (req: any, res: Respo
 
     const answeredQuestionIds = votes.map((v) => v.idPregunta.toString());
 
-    // Agregar información de tiempo restante
-    const now = new Date();
+    // Agregar información de tiempo restante (reutilizar la variable 'now' ya declarada)
     const questionsWithTime = questions.map((q) => {
       const startTime = new Date(q.startTime);
       const endTime = new Date(q.endTime);

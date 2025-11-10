@@ -9,11 +9,14 @@ import roleRoutes from "./routes/role.routes";
 import delegateRoutes from "./routes/delegate.routes";
 import votingRoutes from "./routes/voting.routes";
 import reportesRoutes from "./routes/reportes.routes";
+import assemblyDocumentsRoutes from "./routes/assemblyDocuments.routes";
+import participantRoutes from "./routes/participant.routes";
+import documentsRoutes from "./routes/documents.routes";
+import assemblyAccessRoutes from "./routes/assemblyAccess.routes";
 import path from "path";
 
 dotenv.config();
 
-// Verificar variables de entorno críticas
 if (!process.env.JWT_SECRET) {
   console.warn("⚠️  ADVERTENCIA: JWT_SECRET no está configurado. El login fallará.");
   console.warn("💡 Crea un archivo .env con JWT_SECRET o exporta la variable de entorno.");
@@ -21,7 +24,6 @@ if (!process.env.JWT_SECRET) {
 
 const app = express();
 
-// Middlewares
 app.use(cors({
   origin: "http://localhost:5173", 
   credentials: true
@@ -31,7 +33,6 @@ app.use(express.urlencoded({ extended: true }));
 
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
-// Conectar a MongoDB
 connectDB().catch((error) => {
   console.error("❌ Error conectando a MongoDB:", error);
   console.error("💡 El servidor continuará, pero las operaciones de base de datos fallarán.");
@@ -40,10 +41,9 @@ connectDB().catch((error) => {
   console.error("   2. En Windows: net start MongoDB");
   console.error("   3. O inicia MongoDB manualmente desde los servicios");
   console.error("   4. Verifica MONGO_URI en el archivo .env");
-  // No hacer exit para que el servidor pueda mostrar errores más específicos
 });
 
-// Routes
+
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/assemblies", assemblyRoutes);
@@ -51,13 +51,16 @@ app.use("/api/roles", roleRoutes);
 app.use("/api/delegates", delegateRoutes);
 app.use("/api/votaciones", votingRoutes);
 app.use("/api/reportes", reportesRoutes);
+app.use("/api/assembly-documents", assemblyDocumentsRoutes);
+app.use("/api/participants", participantRoutes);
+app.use("/api/documentos", documentsRoutes);
+app.use("/api/asambleas", assemblyAccessRoutes);
 
-// Health check
+
 app.get("/api/health", (req, res) => {
   res.json({ status: "OK", message: "Server is running" });
 });
 
-// Error handling middleware
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
   console.error("Error:", err);
   res.status(err.status || 500).json({
@@ -73,7 +76,33 @@ const server = app.listen(PORT, () => {
   console.log(`📡 Health check: http://localhost:${PORT}/api/health`);
 });
 
-// Manejar errores de puerto en uso
+// Inicializar servicio de códigos de verificación (opcional, requiere node-cron)
+if (process.env.ENABLE_VERIFICATION_CODES !== "false") {
+  // Intentar cargar node-cron de forma dinámica
+  import("node-cron")
+    .then((cron) => {
+      // Ejecutar cada minuto para verificar asambleas próximas
+      cron.default.schedule("* * * * *", async () => {
+        try {
+          const sendVerificationCodesBeforeEvent = (
+            await import("./services/verificationCodeService")
+          ).default;
+          await sendVerificationCodesBeforeEvent();
+        } catch (error) {
+          console.error("Error ejecutando job de códigos de verificación:", error);
+        }
+      });
+      console.log("✅ Servicio de códigos de verificación iniciado (ejecuta cada minuto)");
+    })
+    .catch((error) => {
+      console.warn(
+        "⚠️  node-cron no está instalado. Los códigos de verificación no se enviarán automáticamente."
+      );
+      console.warn("💡 Para habilitar, instala node-cron: npm install node-cron @types/node-cron");
+      console.warn("💡 O desactiva con: ENABLE_VERIFICATION_CODES=false");
+    });
+}
+
 server.on('error', (error: any) => {
   if (error.code === 'EADDRINUSE') {
     console.error(`❌ Error: El puerto ${PORT} ya está en uso.`);

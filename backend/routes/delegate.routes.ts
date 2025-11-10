@@ -60,11 +60,24 @@ router.post("/registrar", authMiddleware, upload.single("powerOfAttorney"), hand
       });
     }
 
+    // Verificar que el archivo se haya guardado correctamente
+    const uploadedFilePath = req.file.path;
+    const absoluteFilePath = path.isAbsolute(uploadedFilePath) 
+      ? uploadedFilePath 
+      : path.join(process.cwd(), uploadedFilePath);
+    
+    if (!fs.existsSync(absoluteFilePath)) {
+      console.error(`❌ Archivo no encontrado después de upload: ${absoluteFilePath}`);
+      return res.status(500).json({ 
+        msg: "Error al guardar el archivo. Por favor, intente nuevamente." 
+      });
+    }
+
     // Validar formato PDF (Historia 2: DEL-002)
     if (path.extname(req.file.originalname).toLowerCase() !== ".pdf") {
       // Eliminar archivo si no es PDF
-      if (fs.existsSync(req.file.path)) {
-        fs.unlinkSync(req.file.path);
+      if (fs.existsSync(absoluteFilePath)) {
+        fs.unlinkSync(absoluteFilePath);
       }
       return res.status(400).json({ 
         msg: "El formato del archivo no es válido. Solo se permiten archivos PDF." 
@@ -74,8 +87,8 @@ router.post("/registrar", authMiddleware, upload.single("powerOfAttorney"), hand
     // Validar tamaño máximo 5MB (Historia 2: DEL-002)
     if (req.file.size > 5 * 1024 * 1024) {
       // Eliminar archivo si excede el tamaño
-      if (fs.existsSync(req.file.path)) {
-        fs.unlinkSync(req.file.path);
+      if (fs.existsSync(absoluteFilePath)) {
+        fs.unlinkSync(absoluteFilePath);
       }
       return res.status(400).json({ 
         msg: "El archivo supera el tamaño máximo permitido (5MB)." 
@@ -85,11 +98,32 @@ router.post("/registrar", authMiddleware, upload.single("powerOfAttorney"), hand
     // Validar que el participante esté inscrito en la asamblea
     const userAssembly = await Assembly.findById(assembly);
     if (!userAssembly) {
+      // Eliminar archivo si la asamblea no existe
+      if (req.file) {
+        const absoluteFilePath = path.isAbsolute(req.file.path) 
+          ? req.file.path 
+          : path.join(process.cwd(), req.file.path);
+        if (fs.existsSync(absoluteFilePath)) {
+          fs.unlinkSync(absoluteFilePath);
+        }
+      }
       return res.status(404).json({ msg: "Asamblea no encontrada" });
     }
 
-    const isParticipant = userAssembly.participants.includes(userId);
+    // Verificar si el usuario es participante (compatible con array de ObjectId o strings)
+    const isParticipant = userAssembly.participants.some(
+      (p: any) => p.toString() === userId.toString()
+    );
     if (!isParticipant) {
+      // Eliminar archivo si el usuario no es participante
+      if (req.file) {
+        const absoluteFilePath = path.isAbsolute(req.file.path) 
+          ? req.file.path 
+          : path.join(process.cwd(), req.file.path);
+        if (fs.existsSync(absoluteFilePath)) {
+          fs.unlinkSync(absoluteFilePath);
+        }
+      }
       return res.status(403).json({ 
         msg: "Solo participantes inscritos pueden registrar delegados" 
       });
@@ -98,6 +132,15 @@ router.post("/registrar", authMiddleware, upload.single("powerOfAttorney"), hand
     // Validar número de acciones (Historia 1: DEL-001)
     const shares = parseInt(sharesDelegated);
     if (isNaN(shares) || shares <= 0) {
+      // Eliminar archivo si las acciones son inválidas
+      if (req.file) {
+        const absoluteFilePath = path.isAbsolute(req.file.path) 
+          ? req.file.path 
+          : path.join(process.cwd(), req.file.path);
+        if (fs.existsSync(absoluteFilePath)) {
+          fs.unlinkSync(absoluteFilePath);
+        }
+      }
       return res.status(400).json({ 
         msg: "El número de acciones a delegar debe ser mayor a 0" 
       });
@@ -107,6 +150,15 @@ router.post("/registrar", authMiddleware, upload.single("powerOfAttorney"), hand
     // Por ahora, validamos que el número sea razonable (máximo 1,000,000)
     // TODO: Implementar campo shares en modelo User cuando esté disponible
     if (shares > 1000000) {
+      // Eliminar archivo si excede el límite
+      if (req.file) {
+        const absoluteFilePath = path.isAbsolute(req.file.path) 
+          ? req.file.path 
+          : path.join(process.cwd(), req.file.path);
+        if (fs.existsSync(absoluteFilePath)) {
+          fs.unlinkSync(absoluteFilePath);
+        }
+      }
       return res.status(400).json({ 
         msg: "El número de acciones a delegar excede el límite permitido" 
       });
@@ -119,6 +171,15 @@ router.post("/registrar", authMiddleware, upload.single("powerOfAttorney"), hand
     });
 
     if (existingDelegate) {
+      // Eliminar archivo si ya existe un delegado
+      if (req.file) {
+        const absoluteFilePath = path.isAbsolute(req.file.path) 
+          ? req.file.path 
+          : path.join(process.cwd(), req.file.path);
+        if (fs.existsSync(absoluteFilePath)) {
+          fs.unlinkSync(absoluteFilePath);
+        }
+      }
       return res.status(400).json({ 
         msg: "Ya tienes un delegado registrado para esta asamblea" 
       });
@@ -131,10 +192,36 @@ router.post("/registrar", authMiddleware, upload.single("powerOfAttorney"), hand
     });
 
     if (existingDocument) {
+      // Eliminar archivo si el documento ya está registrado
+      if (req.file) {
+        const absoluteFilePath = path.isAbsolute(req.file.path) 
+          ? req.file.path 
+          : path.join(process.cwd(), req.file.path);
+        if (fs.existsSync(absoluteFilePath)) {
+          fs.unlinkSync(absoluteFilePath);
+        }
+      }
       return res.status(400).json({ 
         msg: "Este documento ya está registrado como delegado para esta asamblea" 
       });
     }
+
+    // Normalizar la ruta del archivo (usar ruta relativa desde process.cwd())
+    // req.file.path ya es relativa desde donde se ejecuta el proceso
+    let normalizedFilePath = uploadedFilePath;
+    
+    // Si es absoluta, convertir a relativa
+    if (path.isAbsolute(normalizedFilePath)) {
+      const cwd = process.cwd();
+      normalizedFilePath = path.relative(cwd, normalizedFilePath);
+    }
+    
+    // Normalizar separadores de ruta (usar / para consistencia)
+    normalizedFilePath = normalizedFilePath.replace(/\\/g, "/");
+
+    console.log(`📁 Archivo guardado: ${normalizedFilePath}`);
+    console.log(`📁 Ruta absoluta: ${path.join(process.cwd(), normalizedFilePath)}`);
+    console.log(`📁 Archivo existe: ${fs.existsSync(path.join(process.cwd(), normalizedFilePath))}`);
 
     // Crear el delegado
     const delegate = await Delegate.create({
@@ -148,7 +235,7 @@ router.post("/registrar", authMiddleware, upload.single("powerOfAttorney"), hand
       documentNumber,
       email,
       sharesDelegated: shares,
-      powerOfAttorneyFile: req.file.path,
+      powerOfAttorneyFile: normalizedFilePath,
     });
 
     // Enviar correo al delegado (Historia 4: DEL-004)
@@ -212,6 +299,21 @@ router.post("/registrar", authMiddleware, upload.single("powerOfAttorney"), hand
     });
   } catch (error: any) {
     console.error("Error al registrar delegado:", error);
+    
+    // Eliminar archivo si hay un error no manejado
+    if (req.file) {
+      try {
+        const absoluteFilePath = path.isAbsolute(req.file.path) 
+          ? req.file.path 
+          : path.join(process.cwd(), req.file.path);
+        if (fs.existsSync(absoluteFilePath)) {
+          fs.unlinkSync(absoluteFilePath);
+          console.log(`🗑️ Archivo eliminado después de error: ${absoluteFilePath}`);
+        }
+      } catch (deleteError) {
+        console.error("Error al eliminar archivo después de error:", deleteError);
+      }
+    }
     
     if (error.code === 11000) {
       return res.status(400).json({ 
@@ -288,9 +390,23 @@ router.get("/documento/:id", authMiddleware, adminMiddleware, async (req: any, r
       return res.status(404).json({ msg: "Delegado no encontrado" });
     }
 
-    const filePath = delegate.powerOfAttorneyFile;
+    // Obtener la ruta del archivo (puede ser relativa o absoluta)
+    let filePath = delegate.powerOfAttorneyFile;
+    
+    // Si la ruta es relativa, construir la ruta absoluta desde process.cwd()
+    if (!path.isAbsolute(filePath)) {
+      filePath = path.join(process.cwd(), filePath);
+    }
+    
+    // Normalizar la ruta
+    filePath = path.normalize(filePath);
+    
     if (!fs.existsSync(filePath)) {
-      return res.status(404).json({ msg: "Documento no encontrado" });
+      console.error(`❌ Archivo no encontrado: ${filePath}`);
+      console.error(`   Ruta almacenada en BD: ${delegate.powerOfAttorneyFile}`);
+      return res.status(404).json({ 
+        msg: "El archivo no se encuentra en el servidor",
+      });
     }
 
     res.sendFile(path.resolve(filePath));
@@ -340,6 +456,7 @@ router.get("/my-delegates", authMiddleware, async (req: any, res: Response) => {
 
     const delegates = await Delegate.find({ participant: userId })
       .populate("assembly", "name startDateTime endDateTime")
+      .populate("powerOfAttorneyValidation.validatedBy", "firstName lastName email")
       .sort({ createdAt: -1 });
 
     res.json({ delegates });
@@ -375,6 +492,63 @@ router.get("/available-assemblies", authMiddleware, async (req: any, res: Respon
     res.json({ assemblies: availableAssemblies });
   } catch (error: any) {
     console.error("Error al obtener asambleas disponibles:", error);
+    res.status(500).json({ 
+      msg: "Error del servidor", 
+      error: error.message 
+    });
+  }
+});
+
+// Consultar delegado asignado a un participante (GET /delegados/:asamblea/:participante)
+// IMPORTANTE: Esta ruta debe estar DESPUÉS de las rutas específicas como /all, /my-delegates, etc.
+router.get("/:assemblyId/:participantId", authMiddleware, async (req: any, res: Response) => {
+  try {
+    const { assemblyId, participantId } = req.params;
+    const userId = req.user.id;
+    const userRole = req.user.role;
+
+    // Validar que la asamblea exista
+    const assembly = await Assembly.findById(assemblyId);
+    if (!assembly) {
+      return res.status(404).json({ msg: "Asamblea no encontrada" });
+    }
+
+    // Validar que el participante exista
+    const participant = await User.findById(participantId);
+    if (!participant) {
+      return res.status(404).json({ msg: "Participante no encontrado" });
+    }
+
+    // Validar permisos: solo administradores o el mismo participante pueden consultar
+    if (userRole !== "admin" && userId !== participantId) {
+      return res.status(403).json({ 
+        msg: "No tiene permiso para consultar el delegado de este participante" 
+      });
+    }
+
+    // Buscar delegado
+    const delegate = await Delegate.findOne({
+      assembly: assemblyId,
+      participant: participantId,
+    })
+      .populate("participant", "firstName lastName email documentType documentNumber")
+      .populate("assembly", "name startDateTime endDateTime")
+      .populate("powerOfAttorneyValidation.validatedBy", "firstName lastName email");
+
+    if (!delegate) {
+      return res.status(404).json({ 
+        msg: "No se encontró un delegado asignado a este participante para esta asamblea",
+        hasDelegate: false
+      });
+    }
+
+    res.json({ 
+      msg: "Delegado encontrado",
+      delegate,
+      hasDelegate: true
+    });
+  } catch (error: any) {
+    console.error("Error al consultar delegado:", error);
     res.status(500).json({ 
       msg: "Error del servidor", 
       error: error.message 

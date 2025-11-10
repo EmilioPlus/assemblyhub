@@ -2,8 +2,14 @@ import { Router, Request, Response } from "express";
 import Assembly from "../models/Assembly";
 import AssemblyAuditLog from "../models/AssemblyAuditLog";
 import { authMiddleware, adminMiddleware } from "../utils/authMiddleware";
+import crypto from "crypto";
 
 const router = Router();
+
+// Función para generar código de acceso único (8 caracteres alfanuméricos)
+const generateAccessCode = (): string => {
+  return crypto.randomBytes(4).toString("hex").toUpperCase().substring(0, 8);
+};
 
 // Crear asamblea (solo admin)
 router.post("/", authMiddleware, adminMiddleware, async (req: any, res: Response) => {
@@ -34,16 +40,60 @@ router.post("/", authMiddleware, adminMiddleware, async (req: any, res: Response
       });
     }
 
-    // Validar que no exista una asamblea activa con el mismo nombre y tipo
-    const existingAssembly = await Assembly.findOne({
+    // Validar que no exista una asamblea programada o activa con el mismo nombre y tipo
+    // Se permiten asambleas con el mismo nombre si todas las anteriores están finalizadas
+    const now = new Date();
+    const existingAssemblies = await Assembly.find({
       name,
       processType,
-      status: { $in: ["scheduled", "active"] }
     });
 
-    if (existingAssembly) {
+    // Verificar si hay alguna asamblea que esté programada o activa (basado en fechas)
+    const hasActiveOrScheduled = existingAssemblies.some((existing) => {
+      // Si el estado es cancelled, no cuenta como activa o programada
+      if (existing.status === "cancelled") {
+        return false;
+      }
+      
+      const startDate = new Date(existing.startDateTime);
+      const endDate = new Date(existing.endDateTime);
+      
+      // Si la asamblea ya finalizó (ahora > endDate), no está activa ni programada
+      if (now > endDate) {
+        return false;
+      }
+      
+      // Si la asamblea no ha finalizado (ahora <= endDate), está programada o activa
+      // Esto incluye asambleas que aún no han iniciado, que están en curso, o que están programadas
+      return true;
+    });
+
+    if (hasActiveOrScheduled) {
       return res.status(400).json({ 
-        error: "Ya existe una asamblea activa con el mismo nombre y tipo" 
+        error: "Ya existe una asamblea programada o activa con el mismo nombre y tipo. Solo se pueden crear asambleas con el mismo nombre si todas las anteriores están finalizadas." 
+      });
+    }
+
+    // Generar código de acceso único
+    let accessCode = generateAccessCode();
+    let isUnique = false;
+    let attempts = 0;
+    const maxAttempts = 10;
+
+    // Asegurar que el código sea único
+    while (!isUnique && attempts < maxAttempts) {
+      const existing = await Assembly.findOne({ accessCode });
+      if (!existing) {
+        isUnique = true;
+      } else {
+        accessCode = generateAccessCode();
+        attempts++;
+      }
+    }
+
+    if (!isUnique) {
+      return res.status(500).json({
+        error: "Error al generar código de acceso único",
       });
     }
 
@@ -53,6 +103,7 @@ router.post("/", authMiddleware, adminMiddleware, async (req: any, res: Response
       startDateTime,
       endDateTime,
       processType,
+      accessCode,
       createdBy: req.user.id,
     });
 
@@ -188,10 +239,25 @@ router.get("/", authMiddleware, async (req: any, res: Response) => {
 
     const assemblies = await Assembly.find(query)
       .populate("createdBy", "firstName lastName email")
-      .populate("participants", "firstName lastName email")
+      .populate("participants", "firstName lastName email _id")
       .sort({ createdAt: -1 });
 
-    res.json({ assemblies });
+    // Formatear respuesta para mantener consistencia
+    const formattedAssemblies = assemblies.map((assembly) => ({
+      _id: assembly._id,
+      name: assembly.name,
+      description: assembly.description,
+      startDateTime: assembly.startDateTime,
+      endDateTime: assembly.endDateTime,
+      processType: assembly.processType,
+      status: assembly.status,
+      participants: assembly.participants,
+      createdBy: assembly.createdBy,
+      createdAt: assembly.createdAt,
+      updatedAt: assembly.updatedAt,
+    }));
+
+    res.json({ assemblies: formattedAssemblies });
   } catch (error: any) {
     console.error("Error al listar asambleas:", error);
     res.status(500).json({ 
