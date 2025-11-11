@@ -2,7 +2,7 @@ import Assembly from "../models/Assembly";
 import User from "../models/User";
 import Delegate from "../models/Delegate";
 import VerificationCode from "../models/VerificationCode";
-import nodemailer from "nodemailer";
+import { createEmailTransporter, getMailFrom } from "../utils/emailConfig";
 
 // Función para generar código de verificación (6 dígitos)
 const generateVerificationCode = (): string => {
@@ -16,18 +16,10 @@ const sendVerificationCode = async (
   code: string
 ): Promise<boolean> => {
   try {
-    const transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST || "smtp.ethereal.email",
-      port: Number(process.env.SMTP_PORT || 587),
-      secure: false,
-      auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS,
-      },
-    });
+    const transporter = await createEmailTransporter();
 
     const mailOptions = {
-      from: process.env.MAIL_FROM || "AssemblyHub <no-reply@assemblyhub.local>",
+      from: getMailFrom(),
       to: user.email,
       subject: `Código de verificación - ${assembly.name}`,
       html: `

@@ -4,7 +4,7 @@ import jwt, { SignOptions } from "jsonwebtoken";
 import User from "../models/User";
 import LoginAttempt from "../models/LoginAttempt";
 import crypto from "crypto";
-import nodemailer from "nodemailer";
+import { createEmailTransporter, getMailFrom, getPreviewUrl } from "../utils/emailConfig";
 import { authMiddleware, requireAdmin } from "../utils/authMiddleware";
 import { Resend } from "resend";
 
@@ -213,31 +213,10 @@ router.post("/forgot-password", async (req, res) => {
     }
 
     // Fallback SMTP / Ethereal
-    let smtpUser = process.env.SMTP_USER;
-    let smtpPass = process.env.SMTP_PASS;
-    let smtpHost = process.env.SMTP_HOST || "smtp.ethereal.email";
-    let smtpPort = Number(process.env.SMTP_PORT || 587);
-    let secure = false;
-
-    if (!smtpUser || !smtpPass) {
-      const testAccount = await (nodemailer as any).createTestAccount();
-      smtpUser = testAccount.user;
-      smtpPass = testAccount.pass;
-      smtpHost = "smtp.ethereal.email";
-      smtpPort = 587;
-      secure = false;
-      console.warn("SMTP_USER/SMTP_PASS no configurados. Usando cuenta Ethereal temporal para pruebas.");
-    }
-
-    const transporter = nodemailer.createTransport({
-      host: smtpHost,
-      port: smtpPort,
-      secure,
-      auth: { user: smtpUser, pass: smtpPass },
-    });
+    const transporter = await createEmailTransporter();
 
     const info = await transporter.sendMail({
-      from: process.env.MAIL_FROM || 'AssemblyHub <no-reply@assemblyhub.local>',
+      from: getMailFrom(),
       to: email,
       subject: 'Recupera tu contraseña',
       html: `<p>Hola,</p>
@@ -248,7 +227,7 @@ router.post("/forgot-password", async (req, res) => {
 
     return res.json({
       msg: "Se ha enviado un enlace de recuperación a su correo electrónico",
-      previewUrl: (nodemailer as any).getTestMessageUrl?.(info),
+      previewUrl: getPreviewUrl(info),
       resetLink,
     });
   } catch (error: any) {

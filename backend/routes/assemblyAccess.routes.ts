@@ -7,7 +7,7 @@ import VerificationCode from "../models/VerificationCode";
 import AccessAttempt from "../models/AccessAttempt";
 import AssemblyAccess from "../models/AssemblyAccess";
 import crypto from "crypto";
-import nodemailer from "nodemailer";
+import { createEmailTransporter, getMailFrom } from "../utils/emailConfig";
 
 const router = Router();
 
@@ -233,18 +233,10 @@ router.post("/verificar", async (req: Request, res: Response) => {
 
     // Enviar código por email
     try {
-      const transporter = nodemailer.createTransport({
-        host: process.env.SMTP_HOST || "smtp.ethereal.email",
-        port: Number(process.env.SMTP_PORT || 587),
-        secure: false,
-        auth: {
-          user: process.env.SMTP_USER,
-          pass: process.env.SMTP_PASS,
-        },
-      });
+      const transporter = await createEmailTransporter();
 
       const mailOptions = {
-        from: process.env.MAIL_FROM || "AssemblyHub <no-reply@assemblyhub.local>",
+        from: getMailFrom(),
         to: user.email,
         subject: `Código de verificación - ${assembly.name}`,
         html: `

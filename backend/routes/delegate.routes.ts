@@ -6,7 +6,7 @@ import DelegateAuditLog from "../models/DelegateAuditLog";
 import User from "../models/User";
 import { authMiddleware, adminMiddleware } from "../utils/authMiddleware";
 import upload from "../config/upload";
-import nodemailer from "nodemailer";
+import { createEmailTransporter, getMailFrom } from "../utils/emailConfig";
 import path from "path";
 import fs from "fs";
 
@@ -242,18 +242,10 @@ router.post("/registrar", authMiddleware, upload.single("powerOfAttorney"), hand
     let emailSent = false;
     let emailError = null;
     try {
-      const transporter = nodemailer.createTransport({
-        host: process.env.SMTP_HOST || "smtp.ethereal.email",
-        port: Number(process.env.SMTP_PORT || 587),
-        secure: false,
-        auth: {
-          user: process.env.SMTP_USER,
-          pass: process.env.SMTP_PASS,
-        },
-      });
+      const transporter = await createEmailTransporter();
 
       const mailOptions = {
-        from: process.env.MAIL_FROM || 'AssemblyHub <no-reply@assemblyhub.local>',
+        from: getMailFrom(),
         to: email,
         subject: 'Has sido registrado como delegado para una asamblea',
         html: `

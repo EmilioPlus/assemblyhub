@@ -7,7 +7,7 @@ import { authMiddleware, adminMiddleware } from "../utils/authMiddleware";
 import { documentUpload, handleDocumentUploadError } from "../config/documentUpload";
 import fs from "fs";
 import path from "path";
-import nodemailer from "nodemailer";
+import { createEmailTransporter, getMailFrom } from "../utils/emailConfig";
 
 const router = Router();
 
@@ -450,18 +450,10 @@ router.put("/:documentId/aprobar", authMiddleware, adminMiddleware, async (req: 
     let emailSent = false;
     let emailError = null;
     try {
-      const transporter = nodemailer.createTransport({
-        host: process.env.SMTP_HOST || "smtp.ethereal.email",
-        port: Number(process.env.SMTP_PORT || 587),
-        secure: false,
-        auth: {
-          user: process.env.SMTP_USER,
-          pass: process.env.SMTP_PASS,
-        },
-      });
+      const transporter = await createEmailTransporter();
 
       const mailOptions = {
-        from: process.env.MAIL_FROM || 'AssemblyHub <no-reply@assemblyhub.local>',
+        from: getMailFrom(),
         to: uploadedByUser.email,
         subject: `Documento aprobado: ${document.name}`,
         html: `
@@ -580,18 +572,10 @@ router.put("/:documentId/rechazar", authMiddleware, adminMiddleware, async (req:
     let emailSent = false;
     let emailError = null;
     try {
-      const transporter = nodemailer.createTransport({
-        host: process.env.SMTP_HOST || "smtp.ethereal.email",
-        port: Number(process.env.SMTP_PORT || 587),
-        secure: false,
-        auth: {
-          user: process.env.SMTP_USER,
-          pass: process.env.SMTP_PASS,
-        },
-      });
+      const transporter = await createEmailTransporter();
 
       const mailOptions = {
-        from: process.env.MAIL_FROM || 'AssemblyHub <no-reply@assemblyhub.local>',
+        from: getMailFrom(),
         to: uploadedByUser.email,
         subject: `Documento rechazado: ${document.name}`,
         html: `
